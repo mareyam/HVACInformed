@@ -1,4 +1,3 @@
-import csv
 import random
 import re
 import time
@@ -9,8 +8,10 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-INPUT_FILE = "hvac_companies_list.csv"
-OUTPUT_FILE = "hvac_companies_details.csv"
+from sheets import get_worksheet, read_rows
+
+INPUT_SHEET = "Companies List"
+OUTPUT_SHEET = "Company Details"
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
@@ -38,9 +39,7 @@ def human_scroll(driver, max_steps=6):
 
 
 def read_companies():
-    with open(INPUT_FILE, newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        return list(reader)
+    return read_rows(INPUT_SHEET)
 
 
 def extract_details(driver):
@@ -86,7 +85,7 @@ def extract_details(driver):
 
 def main():
     companies = read_companies()
-    print(f"Loaded {len(companies)} companies from {INPUT_FILE}")
+    print(f"Loaded {len(companies)} companies from Google Sheet tab '{INPUT_SHEET}'")
 
     options = uc.ChromeOptions()
     options.add_argument(f"--user-agent={USER_AGENT}")
@@ -136,13 +135,11 @@ def main():
             random_sleep(2, 5)
 
     finally:
-        with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(
-                f, fieldnames=["name", "url", "phone", "address", "website", "email"]
-            )
-            writer.writeheader()
-            writer.writerows(results)
-        print(f"Saved {len(results)} company details to {OUTPUT_FILE}")
+        headers = ["name", "url", "phone", "address", "website", "email"]
+        worksheet = get_worksheet(OUTPUT_SHEET, headers)
+        if results:
+            worksheet.append_rows([[r[h] for h in headers] for r in results])
+        print(f"Saved {len(results)} company details to Google Sheet tab '{OUTPUT_SHEET}'")
         driver.quit()
 
 

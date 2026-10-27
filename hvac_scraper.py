@@ -1,4 +1,3 @@
-import csv
 import random
 import time
 
@@ -8,9 +7,14 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-URL = "https://www.hvacinformed.com/companies/united-states-of-america-hvac-companies/directory.html"
+from sheets import get_worksheet
+
+URL = (
+    "https://www.hvacinformed.com/companies.html"
+    "?country=united-states-of-america&product-area=air-conditioning"
+)
 TARGET_COUNT = 100
-OUTPUT_FILE = "hvac_companies_list.csv"
+SHEET_NAME = "Companies List"
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
@@ -86,7 +90,7 @@ def extract_companies(driver):
 def page_url(page_num):
     if page_num <= 1:
         return URL
-    return f"{URL}?page={page_num}"
+    return f"{URL}&page={page_num}"
 
 
 def main():
@@ -133,11 +137,10 @@ def main():
 
     finally:
         rows = [{"name": name, "url": url} for url, name in collected.items()][:TARGET_COUNT]
-        with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=["name", "url"])
-            writer.writeheader()
-            writer.writerows(rows)
-        print(f"Saved {len(rows)} companies to {OUTPUT_FILE}")
+        worksheet = get_worksheet(SHEET_NAME, ["name", "url"])
+        if rows:
+            worksheet.append_rows([[r["name"], r["url"]] for r in rows])
+        print(f"Saved {len(rows)} companies to Google Sheet tab '{SHEET_NAME}'")
         driver.quit()
 
 
