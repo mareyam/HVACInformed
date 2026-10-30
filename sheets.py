@@ -50,6 +50,21 @@ def get_worksheet(sheet_name, headers):
     return worksheet
 
 
+def append_to_spreadsheet(sheet_id, headers, rows, worksheet_index=0):
+    """Appends rows to a specific spreadsheet/worksheet without clearing
+    existing data. Adds the header row only if the sheet is currently empty.
+    """
+    client = get_client()
+    spreadsheet = client.open_by_key(sheet_id)
+    worksheet = spreadsheet.get_worksheet(worksheet_index)
+    existing = worksheet.get_all_values()
+    if not existing:
+        worksheet.append_row(headers)
+    if rows:
+        worksheet.append_rows(rows)
+    return worksheet
+
+
 def read_rows(sheet_name):
     if not SHEET_ID:
         raise RuntimeError(
