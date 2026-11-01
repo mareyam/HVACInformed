@@ -45,8 +45,8 @@ def get_worksheet(sheet_name, headers):
         worksheet = spreadsheet.add_worksheet(
             title=sheet_name, rows=1000, cols=len(headers)
         )
-    worksheet.clear()
-    worksheet.append_row(headers)
+    if not worksheet.get_all_values():
+        worksheet.append_row(headers)
     return worksheet
 
 
