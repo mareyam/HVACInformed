@@ -15,6 +15,8 @@ Flow:
      businesses are skipped).
   6. Results are saved to companies.csv and appended to a Google Sheet
      tab named after the Product Area (created if it doesn't exist yet).
+  7. Each company is then pushed into GoHighLevel as a contact tagged
+     "new-lead".
 
 Country is always locked to United States of America.
 
@@ -130,6 +132,12 @@ SERPER_API_KEY = os.environ.get("SERPER_API_KEY", "7435c36555bf73cf70ea218162fa1
 SERPER_REQUEST_DELAY = 60.0 / 50  # 50 requests per minute
 
 OPENAI_MODEL = "gpt-4o-mini"  # cheapest general chat model
+
+GHL_API_BASE = "https://services.leadconnectorhq.com"
+GHL_API_VERSION = "2021-07-28"
+GHL_PIT = os.environ.get("GHL_PIT")
+GHL_LOCATION_ID = os.environ.get("GHL_LOCATION_ID")
+GHL_NEW_LEAD_TAG = "ai-new-lead"
 
 BOOKING_KEYWORDS = [
     "book now", "book an appointment", "book appointment", "schedule service",
@@ -389,6 +397,39 @@ def summarize_site(name, html):
         return f"summary error: {exc}"
 
 
+def push_contact_to_ghl(company):
+    payload = {
+        "locationId": GHL_LOCATION_ID,
+        "name": company.get("name") or "",
+        "source": "HVACInformed Scraper",
+        "tags": [GHL_NEW_LEAD_TAG],
+    }
+    phone = company.get("phone") or company.get("phone_serper")
+    if phone and phone not in ("not found", "not listed", "error"):
+        payload["phone"] = phone
+    if company.get("email"):
+        payload["email"] = company["email"]
+    website = company.get("website") or company.get("website_serper")
+    if website and website not in ("not found", "not listed", "error"):
+        payload["website"] = website
+    if company.get("address"):
+        payload["address1"] = company["address"]
+
+    response = requests.post(
+        f"{GHL_API_BASE}/contacts/",
+        json=payload,
+        headers={
+            "Authorization": f"Bearer {GHL_PIT}",
+            "Version": GHL_API_VERSION,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 def append_companies_to_csv(companies):
     if os.path.isfile(CSV_FILE) and os.path.getsize(CSV_FILE) > 0:
         with open(CSV_FILE, newline="", encoding="utf-8") as f:
@@ -606,9 +647,38 @@ def run_job(slug, label):
         except Exception as exc:
             sheet_message += f" Google Sheet append failed: {exc}"
 
+        ghl_pushed, ghl_failed = 0, 0
+        if GHL_PIT and GHL_LOCATION_ID:
+            ghl_skipped = 0
+            set_state(phase="pushing_ghl", message="Adding contacts to GoHighLevel...")
+            for i, company in enumerate(final_snapshot):
+                if not (company.get("phone") or company.get("email") or company.get("phone_serper")):
+                    ghl_skipped += 1
+                else:
+                    try:
+                        push_contact_to_ghl(company)
+                        ghl_pushed += 1
+                    except requests.exceptions.RequestException:
+                        ghl_failed += 1
+                with job_lock:
+                    job_state["message"] = (
+                        f"Adding contacts to GoHighLevel... {i + 1}/{len(final_snapshot)}"
+                    )
+                time.sleep(1)
+            ghl_message = f" Pushed {ghl_pushed} contact(s) to GoHighLevel (tag: {GHL_NEW_LEAD_TAG})."
+            if ghl_failed:
+                ghl_message += f" {ghl_failed} failed."
+            if ghl_skipped:
+                ghl_message += f" {ghl_skipped} skipped (no phone/email)."
+        else:
+            ghl_message = " Skipped GoHighLevel push (GHL_PIT/GHL_LOCATION_ID not set)."
+
         set_state(
             phase="done",
-            message=f"Done! Scraped {len(companies_snapshot)} companies in '{label}'. {sheet_message}",
+            message=(
+                f"Done! Scraped {len(companies_snapshot)} companies in '{label}'. "
+                f"{sheet_message}{ghl_message}"
+            ),
         )
 
     except Exception as exc:
