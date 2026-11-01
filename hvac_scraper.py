@@ -11,7 +11,7 @@ from sheets import get_worksheet
 
 URL = (
     "https://www.hvacinformed.com/companies.html"
-    "?country=united-states-of-america&product-area=air-conditioning"
+    "?product_area=air-conditioning&country=united-states-of-america&type="
 )
 TARGET_COUNT = 100
 SHEET_NAME = "Companies List"

@@ -142,7 +142,7 @@ def update_company(index, **fields):
 
 
 def page_url(slug, page_num):
-    url = f"{BASE_URL}?country={COUNTRY}&product-area={slug}"
+    url = f"{BASE_URL}?product_area={slug}&country={COUNTRY}&type="
     if page_num > 1:
         url += f"&page={page_num}"
     return url
