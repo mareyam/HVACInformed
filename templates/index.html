@@ -73,7 +73,7 @@
     width: 9px; height: 9px; border-radius: 50%;
     background: var(--muted);
   }
-  .dot.listing, .dot.scraping, .dot.rating, .dot.saving { background: var(--accent); animation: pulse 1s infinite; }
+  .dot.listing, .dot.scraping, .dot.enriching, .dot.rating, .dot.saving { background: var(--accent); animation: pulse 1s infinite; }
   .dot.done { background: var(--ok); }
   .dot.error { background: var(--err); }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
@@ -135,8 +135,13 @@
         <th>Website</th>
         <th>Address</th>
         <th>Email</th>
+        <th>Serper Website</th>
+        <th>Serper Phone</th>
+        <th>Opening Hours</th>
+        <th>Closed?</th>
         <th>Rating</th>
         <th>Rating Notes</th>
+        <th>AI Summary</th>
         <th>Status</th>
       </tr>
     </thead>
@@ -181,8 +186,13 @@ function renderCompanies(companies) {
         <td class="${c.website ? '' : 'pending'}">${c.website ? `<a href="${escapeHtml(c.website)}" target="_blank" rel="noopener">${escapeHtml(c.website)}</a>` : '—'}</td>
         <td class="${c.address ? '' : 'pending'}">${escapeHtml(c.address) || '—'}</td>
         <td class="${c.email ? '' : 'pending'}">${escapeHtml(c.email) || '—'}</td>
+        <td class="${c.website_serper ? '' : 'pending'}">${escapeHtml(c.website_serper) || '—'}</td>
+        <td class="${c.phone_serper ? '' : 'pending'}">${escapeHtml(c.phone_serper) || '—'}</td>
+        <td class="${c.opening_hours ? '' : 'pending'}">${escapeHtml(c.opening_hours) || '—'}</td>
+        <td class="${c.permanently_closed ? '' : 'pending'}">${escapeHtml(c.permanently_closed) || '—'}</td>
         <td class="${c.website_rating ? '' : 'pending'}">${escapeHtml(c.website_rating) || '—'}</td>
         <td class="${c.rating_notes ? '' : 'pending'}">${escapeHtml(c.rating_notes) || '—'}</td>
+        <td class="${c.ai_summary ? '' : 'pending'}">${escapeHtml(c.ai_summary) || '—'}</td>
         <td><span class="badge ${statusClass}">${statusLabel}</span></td>
       </tr>`;
   }).join('');

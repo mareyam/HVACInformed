@@ -6,3 +6,4 @@ flask
 undetected-chromedriver
 selenium
 python-dotenv
+openai

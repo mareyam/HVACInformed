@@ -32,13 +32,14 @@ def get_client():
     return gspread.authorize(creds)
 
 
-def get_worksheet(sheet_name, headers):
-    if not SHEET_ID:
+def get_worksheet(sheet_name, headers, sheet_id=None):
+    sheet_id = sheet_id or SHEET_ID
+    if not sheet_id:
         raise RuntimeError(
             "Set the GOOGLE_SHEET_ID environment variable to your spreadsheet's ID."
         )
     client = get_client()
-    spreadsheet = client.open_by_key(SHEET_ID)
+    spreadsheet = client.open_by_key(sheet_id)
     try:
         worksheet = spreadsheet.worksheet(sheet_name)
     except gspread.exceptions.WorksheetNotFound:

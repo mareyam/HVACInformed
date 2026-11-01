@@ -8,6 +8,13 @@ Flow:
   3. Once listing is done, it automatically announces that it's starting
      to scrape, then visits each company's profile page and fills in
      phone number, website, address, and email live in the table.
+  4. Each company is then looked up on Serper (Google Maps) to check
+     whether it's still open, and to get its website, phone, and
+     opening hours per Google.
+  5. Each company's website is then rated for design quality (closed
+     businesses are skipped).
+  6. Results are saved to companies.csv and appended to a Google Sheet
+     tab named after the Product Area (created if it doesn't exist yet).
 
 Country is always locked to United States of America.
 
@@ -17,6 +24,7 @@ Then open http://127.0.0.1:5050
 """
 
 import csv
+import json
 import os
 import random
 import re
@@ -26,15 +34,21 @@ import time
 import requests
 import undetected_chromedriver as uc
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
+from openai import OpenAI
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-from sheets import append_to_spreadsheet
+from sheets import get_worksheet
+
+load_dotenv()
 
 app = Flask(__name__)
+
+openai_client = OpenAI() if os.environ.get("OPENAI_API_KEY") else None
 
 # (slug, label) pairs - slug is the exact `product_area` value HVACinformed.com expects
 INDUSTRIES = [
@@ -106,8 +120,16 @@ LISTING_LIMIT = 5  # stop listing once this many companies are found
 
 CSV_FILE = "companies.csv"
 CSV_BASE_FIELDS = ["name", "url", "phone", "address", "website", "email"]
+SERPER_FIELDS = ["website_serper", "phone_serper", "opening_hours", "permanently_closed"]
 RATING_FIELDS = ["website_rating", "rating_notes"]
+AI_FIELDS = ["ai_summary"]
 GOOGLE_SHEET_ID = "1bXLjWYtwcSGPbXgKJO6KpVX33grrwjtNiuVeUzSUIs4"
+
+SERPER_URL = "https://google.serper.dev/maps"
+SERPER_API_KEY = os.environ.get("SERPER_API_KEY", "7435c36555bf73cf70ea218162fa1386cddebea7")
+SERPER_REQUEST_DELAY = 60.0 / 50  # 50 requests per minute
+
+OPENAI_MODEL = "gpt-4o-mini"  # cheapest general chat model
 
 BOOKING_KEYWORDS = [
     "book now", "book an appointment", "book appointment", "schedule service",
@@ -217,6 +239,64 @@ def extract_details_from_html(html):
     return details
 
 
+def lookup_business_on_serper(name):
+    last_error = None
+    for attempt in range(2):
+        try:
+            response = requests.post(
+                SERPER_URL,
+                headers={
+                    "X-API-KEY": SERPER_API_KEY,
+                    "Content-Type": "application/json",
+                },
+                json={"q": name},
+                timeout=10,
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as exc:
+            last_error = exc
+            time.sleep(1)
+    raise last_error
+
+
+def enrich_with_serper(name):
+    details = {
+        "website_serper": "",
+        "phone_serper": "",
+        "opening_hours": "",
+        "permanently_closed": "",
+    }
+    try:
+        result = lookup_business_on_serper(name)
+    except requests.exceptions.RequestException:
+        details.update(
+            website_serper="error",
+            phone_serper="error",
+            opening_hours="error",
+            permanently_closed="error",
+        )
+        return details
+
+    places = result.get("places", [])
+    if not places:
+        details.update(
+            website_serper="not found",
+            phone_serper="not found",
+            opening_hours="not found",
+            permanently_closed="not found",
+        )
+    else:
+        place = places[0]
+        details["website_serper"] = place.get("website") or "not listed"
+        details["phone_serper"] = place.get("phoneNumber") or "not listed"
+        details["opening_hours"] = (
+            json.dumps(place.get("openingHours")) if place.get("openingHours") else "not listed"
+        )
+        details["permanently_closed"] = "yes" if place.get("permanentlyClosed") else "no"
+    return details
+
+
 def rate_site(url):
     """Quick heuristic design rating (1-5) based on speed, HTTPS, mobile
     viewport, old copyright year, Flash/frameset use, and booking links."""
@@ -231,7 +311,7 @@ def rate_site(url):
         elapsed = time.monotonic() - start
         response.raise_for_status()
     except requests.exceptions.RequestException:
-        return "error", "could not load site"
+        return "error", "could not load site", ""
 
     html_lower = response.text.lower()
     notes = []
@@ -278,7 +358,35 @@ def rate_site(url):
         notes.append("no booking link found")
 
     score = max(1, min(5, score))
-    return str(score), "; ".join(notes)
+    return str(score), "; ".join(notes), response.text
+
+
+def summarize_site(name, html):
+    if openai_client is None or not html:
+        return ""
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style"]):
+        tag.decompose()
+    text = soup.get_text(" ", strip=True)[:4000]
+    if not text:
+        return ""
+    try:
+        response = openai_client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        f"In one or two short sentences, summarize what the HVAC company "
+                        f"'{name}' offers based on their website text below.\n\n{text}"
+                    ),
+                }
+            ],
+            max_tokens=120,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as exc:
+        return f"summary error: {exc}"
 
 
 def append_companies_to_csv(companies):
@@ -292,7 +400,7 @@ def append_companies_to_csv(companies):
         existing_rows = []
 
     fieldnames = list(existing_header)
-    for col in CSV_BASE_FIELDS + RATING_FIELDS:
+    for col in CSV_BASE_FIELDS + SERPER_FIELDS + RATING_FIELDS + AI_FIELDS:
         if col not in fieldnames:
             fieldnames.append(col)
 
@@ -312,9 +420,26 @@ def append_companies_to_csv(companies):
     return fieldnames, new_rows
 
 
-def append_companies_to_sheet(fieldnames, companies):
-    rows = [[c.get(field, "") for field in fieldnames] for c in companies]
-    append_to_spreadsheet(GOOGLE_SHEET_ID, fieldnames, rows, worksheet_index=0)
+def append_companies_to_sheet(label, fieldnames, companies):
+    worksheet = get_worksheet(label, fieldnames, sheet_id=GOOGLE_SHEET_ID)
+
+    existing_values = worksheet.get_all_values()
+    if existing_values:
+        header = existing_values[0]
+        url_col = header.index("url") if "url" in header else None
+        seen_urls = (
+            {row[url_col] for row in existing_values[1:] if url_col is not None and len(row) > url_col}
+            if url_col is not None
+            else set()
+        )
+    else:
+        seen_urls = set()
+
+    new_for_sheet = [c for c in companies if c.get("url") not in seen_urls]
+    rows = [[c.get(field, "") for field in fieldnames] for c in new_for_sheet]
+    if rows:
+        worksheet.append_rows(rows)
+    return len(rows)
 
 
 def run_job(slug, label):
@@ -412,20 +537,56 @@ def run_job(slug, label):
         driver.quit()
         driver = None
 
+        set_state(phase="enriching", message="Looking up businesses on Serper...")
+
+        with job_lock:
+            enrich_snapshot = list(job_state["companies"])
+
+        for i, company in enumerate(enrich_snapshot):
+            details = enrich_with_serper(company["name"])
+            update_company(i, **details)
+
+            with job_lock:
+                job_state["message"] = f"Looking up businesses on Serper... {i + 1}/{len(enrich_snapshot)}"
+
+            time.sleep(SERPER_REQUEST_DELAY)
+
         set_state(phase="rating", message="Rating website designs...")
 
         with job_lock:
             rating_snapshot = list(job_state["companies"])
 
         for i, company in enumerate(rating_snapshot):
+            if company.get("permanently_closed") == "yes":
+                update_company(
+                    i,
+                    website_rating="closed",
+                    rating_notes="business permanently closed",
+                    ai_summary="",
+                )
+                with job_lock:
+                    job_state["message"] = f"Rating websites... {i + 1}/{len(rating_snapshot)}"
+                continue
+
             website = (company.get("website") or "").strip()
+            if not website:
+                website_serper = (company.get("website_serper") or "").strip()
+                if website_serper not in ("", "not found", "not listed", "error"):
+                    website = website_serper
+
             if website:
                 if not website.startswith(("http://", "https://")):
                     website = "https://" + website
-                score, notes = rate_site(website)
-                update_company(i, website_rating=score, rating_notes=notes)
+                score, notes, html = rate_site(website)
+                summary = summarize_site(company["name"], html)
+                update_company(i, website_rating=score, rating_notes=notes, ai_summary=summary)
             else:
-                update_company(i, website_rating="no website", rating_notes="no website to rate")
+                update_company(
+                    i,
+                    website_rating="no website",
+                    rating_notes="no website to rate",
+                    ai_summary="",
+                )
 
             with job_lock:
                 job_state["message"] = f"Rating websites... {i + 1}/{len(rating_snapshot)}"
@@ -435,12 +596,13 @@ def run_job(slug, label):
         with job_lock:
             final_snapshot = list(job_state["companies"])
 
-        fieldnames, new_rows = append_companies_to_csv(final_snapshot)
+        fieldnames, _new_rows = append_companies_to_csv(final_snapshot)
 
         sheet_message = "Saved to companies.csv."
         try:
-            append_companies_to_sheet(fieldnames, new_rows)
-            sheet_message += " Appended to Google Sheet."
+            sheet_rows = [{field: c.get(field, "") for field in fieldnames} for c in final_snapshot]
+            added = append_companies_to_sheet(label, fieldnames, sheet_rows)
+            sheet_message += f" Appended {added} row(s) to Google Sheet tab '{label}'."
         except Exception as exc:
             sheet_message += f" Google Sheet append failed: {exc}"
 
