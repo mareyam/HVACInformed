@@ -103,7 +103,6 @@ EMAIL_RE = re.compile(
 NON_EMAIL_EXT_RE = re.compile(r"\.(png|jpg|jpeg|gif|svg|webp|css|js|ico)$", re.IGNORECASE)
 
 LISTING_LIMIT = 5  # stop listing once this many companies are found
-CHROME_MAJOR_VERSION = 153  # pin to your installed Chrome's major version
 
 CSV_FILE = "companies.csv"
 CSV_BASE_FIELDS = ["name", "url", "phone", "address", "website", "email"]
@@ -333,7 +332,7 @@ def run_job(slug, label):
         options = uc.ChromeOptions()
         options.add_argument(f"--user-agent={USER_AGENT}")
         options.add_argument("--window-size=1366,900")
-        driver = uc.Chrome(options=options, version_main=CHROME_MAJOR_VERSION)
+        driver = uc.Chrome(options=options)
 
         collected = {}
         page_num = 1
