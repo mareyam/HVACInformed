@@ -150,7 +150,16 @@ GHL_API_BASE = "https://services.leadconnectorhq.com"
 GHL_API_VERSION = "2021-07-28"
 GHL_PIT = os.environ.get("GHL_PIT")
 GHL_LOCATION_ID = os.environ.get("GHL_LOCATION_ID")
-GHL_NEW_LEAD_TAG = "ai-new-lead"
+GHL_NEW_LEAD_TAG = "scraped-lead"
+
+GHL_CUSTOM_FIELD_IDS = {
+    "name": "9UYkjGQPQJHzP7nxHEul",
+    "phone_serper": "AxjDRWeV7Dqc0SJjEFHc",
+    "opening_hours": "EioK6TFgEYP1n9d8L5B8",
+    "website_rating": "Ymq702qG6cTasjpDtW3X",
+    "rating_notes": "OobqjWnmxMGreLxSd5SZ",
+    "permanently_closed": "ucIA60MjztPWb5YLRc2a",
+}
 
 BOOKING_KEYWORDS = [
     "book now", "book an appointment", "book appointment", "schedule service",
@@ -410,12 +419,18 @@ def summarize_site(name, html):
         return f"summary error: {exc}"
 
 
-def push_contact_to_ghl(company):
+def push_contact_to_ghl(company, type_slug=""):
+    tags = [GHL_NEW_LEAD_TAG]
+    if type_slug:
+        tags.append(type_slug)
+    if company.get("email"):
+        tags.append("email-found")
+
     payload = {
         "locationId": GHL_LOCATION_ID,
         "name": company.get("name") or "",
         "source": "HVACInformed Scraper",
-        "tags": [GHL_NEW_LEAD_TAG],
+        "tags": tags,
     }
     phone = company.get("phone") or company.get("phone_serper")
     if phone and phone not in ("not found", "not listed", "error"):
@@ -427,6 +442,14 @@ def push_contact_to_ghl(company):
         payload["website"] = website
     if company.get("address"):
         payload["address1"] = company["address"]
+
+    custom_fields = []
+    for field_key, field_id in GHL_CUSTOM_FIELD_IDS.items():
+        value = company.get(field_key)
+        if value and value not in ("not found", "not listed", "error"):
+            custom_fields.append({"id": field_id, "field_value": value})
+    if custom_fields:
+        payload["customFields"] = custom_fields
 
     response = requests.post(
         f"{GHL_API_BASE}/contacts/",
@@ -669,7 +692,7 @@ def run_job(slug, label, type_slug=""):
                     ghl_skipped += 1
                 else:
                     try:
-                        push_contact_to_ghl(company)
+                        push_contact_to_ghl(company, type_slug)
                         ghl_pushed += 1
                     except requests.exceptions.RequestException:
                         ghl_failed += 1
