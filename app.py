@@ -152,6 +152,8 @@ GHL_PIT = os.environ.get("GHL_PIT")
 GHL_LOCATION_ID = os.environ.get("GHL_LOCATION_ID")
 GHL_NEW_LEAD_TAG = "scraped-lead"
 
+GHL_LEAD_ASSOCIATION_FIELD_ID = "eBaHUXCJqp1NqaVUS5bw"
+
 GHL_CUSTOM_FIELD_IDS = {
     "name": "9UYkjGQPQJHzP7nxHEul",
     "phone_serper": "AxjDRWeV7Dqc0SJjEFHc",
@@ -448,6 +450,10 @@ def push_contact_to_ghl(company, type_slug=""):
         value = company.get(field_key)
         if value and value not in ("not found", "not listed", "error"):
             custom_fields.append({"id": field_id, "field_value": value})
+    if type_slug:
+        custom_fields.append(
+            {"id": GHL_LEAD_ASSOCIATION_FIELD_ID, "field_value": type_slug}
+        )
     if custom_fields:
         payload["customFields"] = custom_fields
 
