@@ -28,7 +28,8 @@ load_dotenv()
 SOURCE_SHEET = "Company Details"
 GHL_API_BASE = "https://services.leadconnectorhq.com"
 GHL_API_VERSION = "2021-07-28"
-REQUEST_DELAY_SECONDS = 1
+BATCH_SIZE = 10  # upsert at most this many contacts per BATCH_WINDOW_SECONDS
+BATCH_WINDOW_SECONDS = 60
 
 LIMIT = int(os.environ.get("LIMIT", "10"))
 GHL_PIT = os.environ.get("GHL_PIT")
@@ -91,6 +92,8 @@ def main():
 
     session = requests.Session()
     pushed, skipped, failed = 0, 0, 0
+    batch_calls = 0
+    batch_start = time.monotonic()
 
     for i, row in enumerate(leads, 1):
         payload = row_to_contact_payload(row)
@@ -99,6 +102,15 @@ def main():
         if dry_run:
             print(f"  (dry run) payload: {payload}")
             continue
+
+        if batch_calls >= BATCH_SIZE:
+            elapsed = time.monotonic() - batch_start
+            if elapsed < BATCH_WINDOW_SECONDS:
+                wait = BATCH_WINDOW_SECONDS - elapsed
+                print(f"  (batch limit reached, waiting {wait:.0f}s)")
+                time.sleep(wait)
+            batch_calls = 0
+            batch_start = time.monotonic()
 
         try:
             resp = push_contact(session, payload)
@@ -120,7 +132,7 @@ def main():
             print(f"  -> failed ({resp.status_code}): {resp.text[:300]}")
             failed += 1
 
-        time.sleep(REQUEST_DELAY_SECONDS)
+        batch_calls += 1
 
     if not dry_run:
         print(

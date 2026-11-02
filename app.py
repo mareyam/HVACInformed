@@ -133,6 +133,9 @@ NON_EMAIL_EXT_RE = re.compile(r"\.(png|jpg|jpeg|gif|svg|webp|css|js|ico)$", re.I
 
 LISTING_LIMIT = 100  # stop listing once this many companies are found
 
+GHL_BATCH_SIZE = 10  # upsert at most this many contacts per GHL_BATCH_WINDOW_SECONDS
+GHL_BATCH_WINDOW_SECONDS = 60
+
 CSV_FILE = "companies.csv"
 CSV_BASE_FIELDS = ["name", "url", "phone", "address", "website", "email"]
 SERPER_FIELDS = ["website_serper", "phone_serper", "opening_hours", "permanently_closed"]
@@ -699,11 +702,19 @@ def run_job(slug, label, type_slug=""):
         ghl_pushed, ghl_failed = 0, 0
         if GHL_PIT and GHL_LOCATION_ID:
             ghl_skipped = 0
+            batch_calls = 0
+            batch_start = time.monotonic()
             set_state(phase="pushing_ghl", message="Adding contacts to GoHighLevel...")
             for i, company in enumerate(final_snapshot):
                 if not (company.get("phone") or company.get("email") or company.get("phone_serper")):
                     ghl_skipped += 1
                 else:
+                    if batch_calls >= GHL_BATCH_SIZE:
+                        elapsed = time.monotonic() - batch_start
+                        if elapsed < GHL_BATCH_WINDOW_SECONDS:
+                            time.sleep(GHL_BATCH_WINDOW_SECONDS - elapsed)
+                        batch_calls = 0
+                        batch_start = time.monotonic()
                     try:
                         result = push_contact_to_ghl(company, slug, type_slug)
                         if result.get("_is_new"):
@@ -712,11 +723,11 @@ def run_job(slug, label, type_slug=""):
                             ghl_skipped += 1
                     except requests.exceptions.RequestException:
                         ghl_failed += 1
+                    batch_calls += 1
                 with job_lock:
                     job_state["message"] = (
                         f"Adding contacts to GoHighLevel... {i + 1}/{len(final_snapshot)}"
                     )
-                time.sleep(1)
             ghl_message = f" Pushed {ghl_pushed} contact(s) to GoHighLevel (tag: {GHL_NEW_LEAD_TAG})."
             if ghl_failed:
                 ghl_message += f" {ghl_failed} failed."
