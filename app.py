@@ -421,8 +421,10 @@ def summarize_site(name, html):
         return f"summary error: {exc}"
 
 
-def push_contact_to_ghl(company, type_slug=""):
+def push_contact_to_ghl(company, product_area_slug="", type_slug=""):
     tags = [GHL_NEW_LEAD_TAG]
+    if product_area_slug:
+        tags.append(product_area_slug)
     if type_slug:
         tags.append(type_slug)
     if company.get("email"):
@@ -703,7 +705,7 @@ def run_job(slug, label, type_slug=""):
                     ghl_skipped += 1
                 else:
                     try:
-                        result = push_contact_to_ghl(company, type_slug)
+                        result = push_contact_to_ghl(company, slug, type_slug)
                         if result.get("_is_new"):
                             ghl_pushed += 1
                         else:
