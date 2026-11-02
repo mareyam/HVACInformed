@@ -528,7 +528,7 @@ def append_companies_to_sheet(label, fieldnames, companies):
     new_for_sheet = [c for c in companies if c.get("url") not in seen_urls]
     rows = [[c.get(field, "") for field in fieldnames] for c in new_for_sheet]
     if rows:
-        worksheet.append_rows(rows)
+        worksheet.append_rows(rows, table_range="A1")
     return len(rows)
 
 

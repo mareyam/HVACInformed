@@ -47,7 +47,7 @@ def get_worksheet(sheet_name, headers, sheet_id=None):
             title=sheet_name, rows=1000, cols=len(headers)
         )
     if not worksheet.get_all_values():
-        worksheet.append_row(headers)
+        worksheet.append_row(headers, table_range="A1")
     return worksheet
 
 
@@ -60,9 +60,9 @@ def append_to_spreadsheet(sheet_id, headers, rows, worksheet_index=0):
     worksheet = spreadsheet.get_worksheet(worksheet_index)
     existing = worksheet.get_all_values()
     if not existing:
-        worksheet.append_row(headers)
+        worksheet.append_row(headers, table_range="A1")
     if rows:
-        worksheet.append_rows(rows)
+        worksheet.append_rows(rows, table_range="A1")
     return worksheet
 
 

@@ -139,7 +139,7 @@ def main():
         rows = [{"name": name, "url": url} for url, name in collected.items()][:TARGET_COUNT]
         worksheet = get_worksheet(SHEET_NAME, ["name", "url"])
         if rows:
-            worksheet.append_rows([[r["name"], r["url"]] for r in rows])
+            worksheet.append_rows([[r["name"], r["url"]] for r in rows], table_range="A1")
         print(f"Saved {len(rows)} companies to Google Sheet tab '{SHEET_NAME}'")
         driver.quit()
 

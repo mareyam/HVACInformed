@@ -138,7 +138,7 @@ def main():
         headers = ["name", "url", "phone", "address", "website", "email"]
         worksheet = get_worksheet(OUTPUT_SHEET, headers)
         if results:
-            worksheet.append_rows([[r[h] for h in headers] for r in results])
+            worksheet.append_rows([[r[h] for h in headers] for r in results], table_range="A1")
         print(f"Saved {len(results)} company details to Google Sheet tab '{OUTPUT_SHEET}'")
         driver.quit()
 

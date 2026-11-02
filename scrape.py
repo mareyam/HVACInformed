@@ -177,11 +177,11 @@ def try_save_to_sheets(listing_rows, detail_rows):
     try:
         ws_list = get_worksheet(SHEET_NAME_LIST, ["name", "url"])
         if listing_rows:
-            ws_list.append_rows([[r["name"], r["url"]] for r in listing_rows])
+            ws_list.append_rows([[r["name"], r["url"]] for r in listing_rows], table_range="A1")
 
         ws_details = get_worksheet(SHEET_NAME_DETAILS, FIELDS)
         if detail_rows:
-            ws_details.append_rows([[r[h] for h in FIELDS] for r in detail_rows])
+            ws_details.append_rows([[r[h] for h in FIELDS] for r in detail_rows], table_range="A1")
 
         print(
             f"Saved {len(listing_rows)} companies to '{SHEET_NAME_LIST}' and "
