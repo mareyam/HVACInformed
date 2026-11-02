@@ -419,7 +419,30 @@ def summarize_site(name, html):
         return f"summary error: {exc}"
 
 
+def find_ghl_contact_by_phone(phone):
+    """Returns the existing GHL contact dict for this phone number, or None."""
+    response = requests.get(
+        f"{GHL_API_BASE}/contacts/search/duplicate",
+        params={"locationId": GHL_LOCATION_ID, "phone": phone},
+        headers={
+            "Authorization": f"Bearer {GHL_PIT}",
+            "Version": GHL_API_VERSION,
+            "Accept": "application/json",
+        },
+        timeout=30,
+    )
+    if response.status_code == 404:
+        return None
+    response.raise_for_status()
+    return response.json().get("contact")
+
+
 def push_contact_to_ghl(company, type_slug=""):
+    phone = company.get("phone") or company.get("phone_serper")
+    if phone and phone not in ("not found", "not listed", "error"):
+        if find_ghl_contact_by_phone(phone):
+            return None
+
     tags = [GHL_NEW_LEAD_TAG]
     if type_slug:
         tags.append(type_slug)
@@ -692,8 +715,10 @@ def run_job(slug, label, type_slug=""):
                     ghl_skipped += 1
                 else:
                     try:
-                        push_contact_to_ghl(company, type_slug)
-                        ghl_pushed += 1
+                        if push_contact_to_ghl(company, type_slug) is None:
+                            ghl_skipped += 1
+                        else:
+                            ghl_pushed += 1
                     except requests.exceptions.RequestException:
                         ghl_failed += 1
                 with job_lock:
@@ -705,7 +730,7 @@ def run_job(slug, label, type_slug=""):
             if ghl_failed:
                 ghl_message += f" {ghl_failed} failed."
             if ghl_skipped:
-                ghl_message += f" {ghl_skipped} skipped (no phone/email)."
+                ghl_message += f" {ghl_skipped} skipped (no phone/email, or already exists)."
         else:
             ghl_message = " Skipped GoHighLevel push (GHL_PIT/GHL_LOCATION_ID not set)."
 

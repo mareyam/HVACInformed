@@ -53,16 +53,34 @@ def row_to_contact_payload(row):
     return payload
 
 
+def _headers():
+    return {
+        "Authorization": f"Bearer {GHL_PIT}",
+        "Version": GHL_API_VERSION,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+
+
+def find_contact_by_phone(session, phone):
+    """Returns the existing GHL contact dict for this phone number, or None."""
+    resp = session.get(
+        f"{GHL_API_BASE}/contacts/search/duplicate",
+        params={"locationId": GHL_LOCATION_ID, "phone": phone},
+        headers=_headers(),
+        timeout=30,
+    )
+    if resp.status_code == 404:
+        return None
+    resp.raise_for_status()
+    return resp.json().get("contact")
+
+
 def push_contact(session, payload):
     resp = session.post(
         f"{GHL_API_BASE}/contacts/",
         json=payload,
-        headers={
-            "Authorization": f"Bearer {GHL_PIT}",
-            "Version": GHL_API_VERSION,
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        },
+        headers=_headers(),
         timeout=30,
     )
     return resp
@@ -83,7 +101,7 @@ def main():
     print(f"Found {len(rows)} total rows, pushing first {len(leads)} leads.\n")
 
     session = requests.Session()
-    pushed, failed = 0, 0
+    pushed, skipped, failed = 0, 0, 0
 
     for i, row in enumerate(leads, 1):
         payload = row_to_contact_payload(row)
@@ -91,6 +109,17 @@ def main():
 
         if dry_run:
             print(f"  (dry run) payload: {payload}")
+            continue
+
+        phone = payload.get("phone")
+        try:
+            if phone and find_contact_by_phone(session, phone):
+                print(f"  -> skipped (contact with phone {phone!r} already exists)")
+                skipped += 1
+                continue
+        except requests.RequestException as e:
+            print(f"  -> duplicate check failed: {e}")
+            failed += 1
             continue
 
         try:
@@ -110,7 +139,10 @@ def main():
         time.sleep(REQUEST_DELAY_SECONDS)
 
     if not dry_run:
-        print(f"\nDone. Pushed {pushed} / {len(leads)} leads ({failed} failed).")
+        print(
+            f"\nDone. Pushed {pushed} / {len(leads)} leads "
+            f"({skipped} already existed, {failed} failed)."
+        )
 
 
 if __name__ == "__main__":
