@@ -131,7 +131,7 @@ EMAIL_RE = re.compile(
 )
 NON_EMAIL_EXT_RE = re.compile(r"\.(png|jpg|jpeg|gif|svg|webp|css|js|ico)$", re.IGNORECASE)
 
-LISTING_LIMIT = 5  # stop listing once this many companies are found
+LISTING_LIMIT = 100  # stop listing once this many companies are found
 
 CSV_FILE = "companies.csv"
 CSV_BASE_FIELDS = ["name", "url", "phone", "address", "website", "email"]
