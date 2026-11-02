@@ -105,6 +105,19 @@ INDUSTRIES = [
 ]
 INDUSTRY_LABELS = dict(INDUSTRIES)
 
+# (slug, label) pairs - slug is the exact `type` value HVACinformed.com expects
+TYPES = [
+    ("association-regulatory-body", "Associations/ regulatory bodies"),
+    ("consultant", "Consultants"),
+    ("contractor", "Contractors"),
+    ("distributor", "Distributors"),
+    ("installer", "Installers"),
+    ("manufacturer", "Manufacturers"),
+    ("reseller", "Resellers"),
+    ("services", "Services"),
+]
+TYPE_LABELS = dict(TYPES)
+
 COUNTRY = "united-states-of-america"  # always United States - do not change
 BASE_URL = "https://www.hvacinformed.com/companies.html"
 USER_AGENT = (
@@ -170,8 +183,8 @@ def update_company(index, **fields):
         job_state["companies"][index].update(fields)
 
 
-def page_url(slug, page_num):
-    url = f"{BASE_URL}?product_area={slug}&country={COUNTRY}&type="
+def page_url(slug, page_num, type_slug=""):
+    url = f"{BASE_URL}?product_area={slug}&country={COUNTRY}&type={type_slug}"
     if page_num > 1:
         url += f"&page={page_num}"
     return url
@@ -483,7 +496,7 @@ def append_companies_to_sheet(label, fieldnames, companies):
     return len(rows)
 
 
-def run_job(slug, label):
+def run_job(slug, label, type_slug=""):
     driver = None
     try:
         set_state(
@@ -502,7 +515,7 @@ def run_job(slug, label):
 
         collected = {}
         page_num = 1
-        driver.get(page_url(slug, page_num))
+        driver.get(page_url(slug, page_num, type_slug))
         random_sleep(1.5, 2.5)
 
         while True:
@@ -545,7 +558,7 @@ def run_job(slug, label):
 
             page_num += 1
             random_sleep(1, 2)
-            driver.get(page_url(slug, page_num))
+            driver.get(page_url(slug, page_num, type_slug))
             random_sleep(1, 2)
 
         with job_lock:
@@ -690,7 +703,7 @@ def run_job(slug, label):
 
 @app.route("/")
 def index():
-    return render_template("index.html", industries=INDUSTRIES)
+    return render_template("index.html", industries=INDUSTRIES, types=TYPES)
 
 
 @app.route("/api/scrape", methods=["POST"])
@@ -701,11 +714,15 @@ def start_scrape():
     if not slug or not label:
         return jsonify({"error": "invalid industry"}), 400
 
+    type_slug = data.get("type") or ""
+    if type_slug and type_slug not in TYPE_LABELS:
+        return jsonify({"error": "invalid type"}), 400
+
     with job_lock:
         if job_state["phase"] in ("listing", "scraping"):
             return jsonify({"error": "a job is already running"}), 409
 
-    thread = threading.Thread(target=run_job, args=(slug, label), daemon=True)
+    thread = threading.Thread(target=run_job, args=(slug, label, type_slug), daemon=True)
     thread.start()
     return jsonify({"status": "started"})
 

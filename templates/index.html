@@ -116,6 +116,12 @@
     <option value="{{ slug }}">{{ label }}</option>
     {% endfor %}
   </select>
+  <select id="type">
+    <option value="">Types</option>
+    {% for slug, label in types %}
+    <option value="{{ slug }}">{{ label }}</option>
+    {% endfor %}
+  </select>
   <button id="startBtn">Find Companies</button>
   <span class="country-badge">Country: United States of America</span>
 </div>
@@ -152,6 +158,7 @@
 
 <script>
 const industrySelect = document.getElementById('industry');
+const typeSelect = document.getElementById('type');
 const startBtn = document.getElementById('startBtn');
 const statusDot = document.getElementById('statusDot');
 const statusText = document.getElementById('statusText');
@@ -217,11 +224,12 @@ startBtn.addEventListener('click', () => {
     alert('Please select a product area first.');
     return;
   }
+  const type = typeSelect.value;
   startBtn.disabled = true;
   fetch('/api/scrape', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({industry})
+    body: JSON.stringify({industry, type})
   }).then(r => r.json()).then(data => {
     if (data.error) {
       alert(data.error);
