@@ -62,23 +62,12 @@ def _headers():
     }
 
 
-def find_contact_by_phone(session, phone):
-    """Returns the existing GHL contact dict for this phone number, or None."""
-    resp = session.get(
-        f"{GHL_API_BASE}/contacts/search/duplicate",
-        params={"locationId": GHL_LOCATION_ID, "phone": phone},
-        headers=_headers(),
-        timeout=30,
-    )
-    if resp.status_code == 404:
-        return None
-    resp.raise_for_status()
-    return resp.json().get("contact")
-
-
 def push_contact(session, payload):
+    # Upsert: GHL finds an existing contact by phone/email itself and
+    # updates it, or creates a new one if none matches.
+    # https://marketplace.gohighlevel.com/docs/ghl/contacts/upsert-contact
     resp = session.post(
-        f"{GHL_API_BASE}/contacts/",
+        f"{GHL_API_BASE}/contacts/upsert",
         json=payload,
         headers=_headers(),
         timeout=30,
@@ -111,17 +100,6 @@ def main():
             print(f"  (dry run) payload: {payload}")
             continue
 
-        phone = payload.get("phone")
-        try:
-            if phone and find_contact_by_phone(session, phone):
-                print(f"  -> skipped (contact with phone {phone!r} already exists)")
-                skipped += 1
-                continue
-        except requests.RequestException as e:
-            print(f"  -> duplicate check failed: {e}")
-            failed += 1
-            continue
-
         try:
             resp = push_contact(session, payload)
         except requests.RequestException as e:
@@ -130,8 +108,14 @@ def main():
             continue
 
         if resp.status_code in (200, 201):
-            print(f"  -> created (contact id: {resp.json().get('contact', {}).get('id', '?')})")
-            pushed += 1
+            body = resp.json()
+            contact_id = body.get("contact", {}).get("id", "?")
+            if body.get("new"):
+                print(f"  -> created (contact id: {contact_id})")
+                pushed += 1
+            else:
+                print(f"  -> already existed, updated (contact id: {contact_id})")
+                skipped += 1
         else:
             print(f"  -> failed ({resp.status_code}): {resp.text[:300]}")
             failed += 1
